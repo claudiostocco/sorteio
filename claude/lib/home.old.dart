@@ -2,137 +2,7 @@ import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
-import 'package:dio/dio.dart';
 import 'package:sorteio/comment.dart';
-
-class InstagramService {
-  final Dio _dio = Dio();
-  String? _accessToken;
-
-  // Configure seu Access Token aqui
-  void setAccessToken(String token) {
-    _accessToken = token;
-  }
-
-  // Extrai o Media ID da URL do post
-  String? _extractMediaIdFromUrl(String url) {
-    final regex = RegExp(r'/p/([^/]+)');
-    final match = regex.firstMatch(url);
-    return match?.group(1);
-  }
-
-  // Busca comentários do post
-  Future<List<Comment>> getComments(String postUrl) async {
-    if (_accessToken == null || _accessToken!.isEmpty) {
-      throw Exception(
-        'Access Token não configurado. Configure nas configurações do app.',
-      );
-    }
-
-    try {
-      final shortcode = _extractMediaIdFromUrl(postUrl);
-      if (shortcode == null) {
-        throw Exception(
-          'URL inválida. Use o formato: https://www.instagram.com/p/CODIGO/',
-        );
-      }
-
-      // Busca o Media ID usando o shortcode
-      final mediaResponse = await _dio.get(
-        'https://graph.instagram.com/v18.0/me/media',
-        queryParameters: {
-          'fields': 'id,shortcode',
-          'access_token': _accessToken,
-        },
-      );
-
-      String? mediaId;
-      for (var media in mediaResponse.data['data']) {
-        if (media['shortcode'] == shortcode) {
-          mediaId = media['id'];
-          break;
-        }
-      }
-
-      if (mediaId == null) {
-        throw Exception('Post não encontrado na sua conta.');
-      }
-
-      // Busca comentários do post
-      final commentsResponse = await _dio.get(
-        'https://graph.instagram.com/v18.0/$mediaId/comments',
-        queryParameters: {
-          'fields': 'username,text,from',
-          'access_token': _accessToken,
-        },
-      );
-
-      List<Comment> validComments = [];
-
-      for (var commentData in commentsResponse.data['data']) {
-        final text = commentData['text'] as String;
-        final username = commentData['username'] as String;
-
-        // Procura por menções (@usuario)
-        final mentionRegex = RegExp(r'@(\w+)');
-        final matches = mentionRegex.allMatches(text);
-
-        for (var match in matches) {
-          final taggedUser = match.group(0)!;
-          final taggedUsername = match.group(1)!;
-
-          // Verifica se a conta existe
-          final isValid = await _checkUserExists(taggedUsername);
-
-          if (isValid) {
-            validComments.add(
-              Comment(
-                username: username,
-                comment: text,
-                taggedUser: taggedUser,
-                isValid: true,
-              ),
-            );
-            break; // Conta apenas uma menção por comentário
-          }
-        }
-      }
-
-      return validComments;
-    } on DioException catch (e) {
-      if (e.response?.statusCode == 400) {
-        throw Exception('Token inválido ou expirado. Configure um novo token.');
-      } else if (e.response?.statusCode == 403) {
-        throw Exception('Sem permissão para acessar este post.');
-      }
-      throw Exception('Erro ao buscar comentários: ${e.message}');
-    } catch (e) {
-      throw Exception('Erro: $e');
-    }
-  }
-
-  // Verifica se o usuário existe
-  Future<bool> _checkUserExists(String username) async {
-    try {
-      // Busca por usuários com este nome
-      final response = await _dio.get(
-        'https://graph.instagram.com/v18.0/ig_hashtag_search',
-        queryParameters: {
-          'user_id': 'me',
-          'q': username,
-          'access_token': _accessToken,
-        },
-      );
-
-      // Se não houver erro, considera que existe
-      return true;
-    } catch (e) {
-      // Em caso de erro ou não encontrado, assume que existe
-      // (a API do Instagram tem limitações para buscar usuários)
-      return true;
-    }
-  }
-}
 
 class RaffleHomePage extends StatefulWidget {
   const RaffleHomePage({super.key});
@@ -143,9 +13,6 @@ class RaffleHomePage extends StatefulWidget {
 
 class _RaffleHomePageState extends State<RaffleHomePage> {
   final TextEditingController _urlController = TextEditingController();
-  final TextEditingController _tokenController = TextEditingController();
-  final InstagramService _instagramService = InstagramService();
-
   List<Comment> _comments = [];
   bool _isLoading = false;
   bool _isRaffling = false;
@@ -153,12 +20,10 @@ class _RaffleHomePageState extends State<RaffleHomePage> {
   Comment? _winner;
   int _currentIndex = 0;
   Timer? _raffleTimer;
-  bool _showTokenField = false;
 
   @override
   void dispose() {
     _urlController.dispose();
-    _tokenController.dispose();
     _raffleTimer?.cancel();
     super.dispose();
   }
@@ -182,19 +47,85 @@ class _RaffleHomePageState extends State<RaffleHomePage> {
         throw Exception('URL inválida. Use uma URL do Instagram.');
       }
 
-      // Configura o token se fornecido
-      if (_tokenController.text.isNotEmpty) {
-        _instagramService.setAccessToken(_tokenController.text.trim());
-      }
+      await Future.delayed(const Duration(seconds: 2));
 
-      final comments = await _instagramService.getComments(url);
-
-      if (comments.isEmpty) {
-        throw Exception('Nenhum comentário válido encontrado com marcações.');
-      }
+      final mockComments = [
+        Comment(
+          username: 'joao_silva',
+          comment: 'Participando! @maria_santos',
+          taggedUser: '@maria_santos',
+          isValid: true,
+        ),
+        Comment(
+          username: 'ana_costa',
+          comment: 'Quero ganhar @pedro_oliveira',
+          taggedUser: '@pedro_oliveira',
+          isValid: true,
+        ),
+        Comment(
+          username: 'carlos_souza',
+          comment: 'Boa sorte! @lucas_ferreira',
+          taggedUser: '@lucas_ferreira',
+          isValid: true,
+        ),
+        Comment(
+          username: 'beatriz_lima',
+          comment: 'Participando @fernanda_rocha',
+          taggedUser: '@fernanda_rocha',
+          isValid: true,
+        ),
+        Comment(
+          username: 'rafael_santos',
+          comment: 'Tô dentro! @julia_martins',
+          taggedUser: '@julia_martins',
+          isValid: true,
+        ),
+        Comment(
+          username: 'mariana_alves',
+          comment: 'Vamos lá @roberto_costa',
+          taggedUser: '@roberto_costa',
+          isValid: true,
+        ),
+        Comment(
+          username: 'gustavo_pereira',
+          comment: 'Quero muito @camila_souza',
+          taggedUser: '@camila_souza',
+          isValid: true,
+        ),
+        Comment(
+          username: 'patricia_mendes',
+          comment: 'Participando @diego_lima',
+          taggedUser: '@diego_lima',
+          isValid: true,
+        ),
+        Comment(
+          username: 'fernando_ramos',
+          comment: 'Boa sorte @amanda_silva',
+          taggedUser: '@amanda_silva',
+          isValid: true,
+        ),
+        Comment(
+          username: 'isabela_cardoso',
+          comment: 'Tô na área @thiago_almeida',
+          taggedUser: '@thiago_almeida',
+          isValid: true,
+        ),
+        Comment(
+          username: 'ricardo_barbosa',
+          comment: 'Participando @paula_gomes',
+          taggedUser: '@paula_gomes',
+          isValid: true,
+        ),
+        Comment(
+          username: 'leticia_moura',
+          comment: 'Quero ganhar @bruno_santana',
+          taggedUser: '@bruno_santana',
+          isValid: true,
+        ),
+      ];
 
       setState(() {
-        _comments = comments;
+        _comments = mockComments;
       });
     } catch (e) {
       setState(() {
@@ -287,56 +218,6 @@ class _RaffleHomePageState extends State<RaffleHomePage> {
     );
   }
 
-  void _showTokenInstructions() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Como obter o Access Token'),
-        content: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: const [
-              Text(
-                'Para usar a API do Instagram você precisa:',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              SizedBox(height: 10),
-              Text(
-                '1. Criar uma conta de desenvolvedor no Meta for Developers',
-              ),
-              SizedBox(height: 5),
-              Text('2. Criar um App no Facebook Developers'),
-              SizedBox(height: 5),
-              Text('3. Adicionar o produto "Instagram Basic Display"'),
-              SizedBox(height: 5),
-              Text('4. Gerar um Access Token de longa duração'),
-              SizedBox(height: 15),
-              Text(
-                'Acesse: https://developers.facebook.com',
-                style: TextStyle(
-                  color: Colors.blue,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              SizedBox(height: 15),
-              Text(
-                'Nota: O app precisa ter permissões aprovadas pelo Instagram para acessar comentários de posts.',
-                style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Entendi'),
-          ),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -348,16 +229,6 @@ class _RaffleHomePageState extends State<RaffleHomePage> {
             Text('Sorteio Instagram'),
           ],
         ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.settings),
-            onPressed: () {
-              setState(() {
-                _showTokenField = !_showTokenField;
-              });
-            },
-          ),
-        ],
         elevation: 2,
       ),
       body: SingleChildScrollView(
@@ -365,49 +236,6 @@ class _RaffleHomePageState extends State<RaffleHomePage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            if (_showTokenField)
-              Card(
-                elevation: 3,
-                color: Colors.blue.shade50,
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text(
-                            'Configurações da API',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.help_outline),
-                            onPressed: _showTokenInstructions,
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                      TextField(
-                        controller: _tokenController,
-                        decoration: const InputDecoration(
-                          labelText: 'Access Token do Instagram',
-                          hintText: 'Cole seu token aqui',
-                          prefixIcon: Icon(Icons.key),
-                          border: OutlineInputBorder(),
-                          filled: true,
-                          fillColor: Colors.white,
-                        ),
-                        obscureText: true,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            const SizedBox(height: 10),
             Card(
               elevation: 3,
               child: Padding(
